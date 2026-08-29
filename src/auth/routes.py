@@ -5,11 +5,16 @@ from fastapi.responses import JSONResponse
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from src.db.main import get_session
-from .schemas import UserCreateModel, UserModel, UserLoginModel
+from src.db.redis import add_jti_to_blocklist
+from .dependancies import (
+    RefreshTokenBearer,
+    AccessTokenBearer,
+    get_current_user,
+    RoleChecker
+)
+from .schemas import UserCreateModel, UserModel, UserLoginModel, UserBooksModel
 from .service import UserService
 from .utils import create_access_token, verify_password
-from .dependancies import RefreshTokenBearer, AccessTokenBearer, get_current_user, RoleChecker
-from src.db.redis import add_jti_to_blocklist
 
 auth_router = APIRouter()
 user_service = UserService()
@@ -89,6 +94,7 @@ async def login_user(login_data: UserLoginModel, session: AsyncSession = Depends
         detail="Incorrect email or password",
     )
 
+
 @auth_router.get('/refresh_token')
 async def get_new_access_token(token_details: dict = Depends(RefreshTokenBearer())):
     expiry_timestamp = token_details['exp']
@@ -102,9 +108,11 @@ async def get_new_access_token(token_details: dict = Depends(RefreshTokenBearer(
 
     raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid or expired token")
 
-@auth_router.get('/me')
-async def get_current_user(user = Depends(get_current_user), _ :bool = Depends(role_checker)):
+
+@auth_router.get('/me', response_model=UserBooksModel)
+async def get_current_user(user=Depends(get_current_user), _: bool = Depends(role_checker)):
     return user
+
 
 @auth_router.get('/logout')
 async def revoke_token(token_details: dict = Depends(AccessTokenBearer())):

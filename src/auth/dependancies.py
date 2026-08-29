@@ -1,12 +1,12 @@
 from fastapi import Request, HTTPException, status, Depends
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlmodel.ext.asyncio.session import AsyncSession
 from typing import List
 from src.db.redis import token_in_blocklist
 from .utils import decode_token
 from ..db.main import get_session
 from .service import UserService
-from .models import User
+from src.db.models import User
 user_service = UserService()
 
 class TokenBearer(HTTPBearer):
