@@ -1,5 +1,3 @@
-
-
 class BooklyException(Exception):
     """This is the base class for all bookly errors"""
     pass
@@ -29,6 +27,7 @@ class UserEmailAlreadyExists(BooklyException):
     """User has provided an email for a user who exists during sign up."""
     pass
 
+
 class UserUsernameAlreadyExists(BooklyException):
     """User has provided an username for a user who exists during sign up."""
     pass
@@ -36,40 +35,34 @@ class UserUsernameAlreadyExists(BooklyException):
 
 class InvalidCredentials(BooklyException):
     """User has provided wrong email or password during log in."""
-
     pass
 
 
 class InsufficientPermission(BooklyException):
     """User does not have the neccessary permissions to perform an action."""
-
     pass
 
 
 class BookNotFound(BooklyException):
     """Book Not found"""
-
     pass
 
 
 class TagNotFound(BooklyException):
     """Tag Not found"""
-
     pass
 
 
 class TagAlreadyExists(BooklyException):
     """Tag already exists"""
-
     pass
 
 
 class UserNotFound(BooklyException):
     """User Not found"""
-
     pass
 
 
-class AccountNotVerified(Exception):
+class AccountNotVerified(BooklyException):
     """Account not yet verified"""
     pass

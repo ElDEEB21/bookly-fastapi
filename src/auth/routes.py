@@ -6,12 +6,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 from src.db.main import get_session
 from src.db.redis import add_jti_to_blocklist
-from src.errors import (
-    UserEmailAlreadyExists,
-    UserUsernameAlreadyExists,
-    InvalidCredentials,
-    InvalidToken,
-)
+from src.errors import InvalidToken
 from .dependancies import (
     RefreshTokenBearer,
     AccessTokenBearer,
@@ -25,7 +20,7 @@ from .schemas import (
     UserBooksModel
 )
 from .service import UserService
-from .utils import create_access_token, verify_password
+from .utils import create_access_token
 
 auth_router = APIRouter()
 user_service = UserService()
@@ -43,17 +38,6 @@ async def create_user_Account(
         user_data: UserCreateModel,
         session: AsyncSession = Depends(get_session)
 ):
-    email = user_data.email
-    user_username = user_data.username
-
-    user_email_exists = await user_service.user_email_exists(session, email)
-    if user_email_exists:
-        raise UserEmailAlreadyExists()
-
-    user_username_exists = await user_service.user_username_exists(session, user_username)
-    if user_username_exists:
-        raise UserUsernameAlreadyExists()
-
     new_user = await user_service.create_user(session, user_data)
     return new_user
 
@@ -67,40 +51,36 @@ async def login_user(login_data: UserLoginModel, session: AsyncSession = Depends
     email = login_data.email
     password = login_data.password
 
-    user = await user_service.get_user_by_email(session, email)
+    user = await user_service.authenticate_user(session, email, password)
 
-    if user is not None:
-        password_valid = verify_password(password, user.password_hash)
-        if password_valid:
-            access_token = create_access_token(
-                user_data={
-                    'email': user.email,
-                    'user_uuid': str(user.uid),
-                    "role": user.role,
-                }
-            )
+    access_token = create_access_token(
+        user_data={
+            'email': user.email,
+            'user_uuid': str(user.uid),
+            "role": user.role,
+        }
+    )
 
-            refresh_token = create_access_token(
-                user_data={
-                    'email': user.email,
-                    'user_uuid': str(user.uid),
-                },
-                refresh=True,
-                expiry=timedelta(days=REFRESH_TOKEN_EXPIRY)
-            )
+    refresh_token = create_access_token(
+        user_data={
+            'email': user.email,
+            'user_uuid': str(user.uid),
+        },
+        refresh=True,
+        expiry=timedelta(days=REFRESH_TOKEN_EXPIRY)
+    )
 
-            return JSONResponse(
-                content={
-                    "message": "Successfully logged in",
-                    "access_token": access_token,
-                    "refresh_token": refresh_token,
-                    "user": {
-                        "email": user.email,
-                        "uid": str(user.uid),
-                    }
-                }
-            )
-    raise InvalidCredentials()
+    return JSONResponse(
+        content={
+            "message": "Successfully logged in",
+            "access_token": access_token,
+            "refresh_token": refresh_token,
+            "user": {
+                "email": user.email,
+                "uid": str(user.uid),
+            }
+        }
+    )
 
 
 @auth_router.get('/refresh_token')

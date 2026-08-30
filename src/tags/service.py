@@ -1,5 +1,3 @@
-from fastapi import status
-from fastapi.exceptions import HTTPException
 from sqlmodel import desc, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
@@ -9,10 +7,6 @@ from src.errors import BookNotFound, TagNotFound, TagAlreadyExists
 from .schemas import TagAddModel, TagCreateModel
 
 book_service = BookService()
-
-server_error = HTTPException(
-    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Something went wrong"
-)
 
 
 class TagService:
@@ -25,7 +19,7 @@ class TagService:
     async def add_tags_to_book(
             self, book_uid: str, tag_data: TagAddModel, session: AsyncSession
     ):
-        book = await book_service.get_book(book_uid=book_uid, session=session)
+        book = await book_service.get_book(session, book_uid)
         if not book:
             raise BookNotFound()
         for tag_item in tag_data.tags:
@@ -69,7 +63,7 @@ class TagService:
         return tag
 
     async def delete_tag(self, tag_uid: str, session: AsyncSession):
-        tag = self.get_tag_by_uid(tag_uid, session)
+        tag = await self.get_tag_by_uid(tag_uid, session)
         if not tag:
             raise TagNotFound()
         await session.delete(tag)

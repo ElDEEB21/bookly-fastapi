@@ -4,6 +4,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from sqlmodel import select, desc
 
 from src.db.models import Book
+from src.errors import BookNotFound
 from .schemas import BookCreateModel, BookUpdateModel
 
 
@@ -18,12 +19,15 @@ class BookService:
         result = await session.exec(statement)
         return result.all()
 
-    async def get_book(self, session: AsyncSession, book_uuid: str):
-        statement = select(Book).where(Book.uid == book_uuid)
+    async def get_book(self, session: AsyncSession, book_uid: str):
+        statement = select(Book).where(Book.uid == book_uid)
         result = await session.exec(statement)
         book = result.first()
 
-        return book if book else None
+        if not book:
+            raise BookNotFound()
+
+        return book
 
     async def create_book(self, session: AsyncSession, book_data: BookCreateModel, user_id: str):
         new_book = Book(**book_data.model_dump())
@@ -38,10 +42,8 @@ class BookService:
 
         return new_book
 
-    async def update_book(self, session: AsyncSession, book_uuid: str, book_data: BookUpdateModel):
-        book = await self.get_book(session, book_uuid)
-        if not book:
-            return None
+    async def update_book(self, session: AsyncSession, book_uid: str, book_data: BookUpdateModel):
+        book = await self.get_book(session, book_uid)
 
         for key, value in book_data.model_dump().items():
             setattr(book, key, value)
@@ -50,12 +52,10 @@ class BookService:
 
         return book
 
-    async def delete_book(self, session: AsyncSession, book_uuid: str):
-        book = await self.get_book(session, book_uuid)
-        if not book:
-            return None
+    async def delete_book(self, session: AsyncSession, book_uid: str):
+        book = await self.get_book(session, book_uid)
 
         await session.delete(book)
         await session.commit()
 
-        return book
+        return {}

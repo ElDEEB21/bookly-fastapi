@@ -1,10 +1,9 @@
-from fastapi import status
-from fastapi.exceptions import HTTPException
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from src.auth.service import UserService
 from src.books.service import BookService
 from src.db.models import Review
+from src.errors import BookNotFound, UserNotFound
 from src.reviews.schemas import ReviewCreateModel
 
 book_service = BookService()
@@ -20,36 +19,25 @@ class ReviewService:
             review_data: ReviewCreateModel,
             session: AsyncSession
     ):
-        try:
-            book = await book_service.get_book(session, book_uid)
-            user = await user_service.get_user_by_email(session, user_email)
+        book = await book_service.get_book(session, book_uid)
+        user = await user_service.get_user_by_email(session, user_email)
 
-            review_data_dict = review_data.model_dump()
-            new_review = Review(
-                **review_data_dict
-            )
+        if not book:
+            raise BookNotFound()
 
-            new_review.user = user
-            new_review.book = book
+        if not user:
+            raise UserNotFound()
 
-            if not book:
-                raise HTTPException(
-                    detail="Book not found", status_code=status.HTTP_404_NOT_FOUND
-                )
+        review_data_dict = review_data.model_dump()
+        new_review = Review(
+            **review_data_dict
+        )
 
-            if not user:
-                raise HTTPException(
-                    detail="User not found", status_code=status.HTTP_404_NOT_FOUND
-                )
+        new_review.user = user
+        new_review.book = book
 
-            session.add(new_review)
-            await session.commit()
-            await session.refresh(new_review)
+        session.add(new_review)
+        await session.commit()
+        await session.refresh(new_review)
 
-            return new_review
-
-        except Exception as e:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Oops, something went wrong",
-            )
+        return new_review

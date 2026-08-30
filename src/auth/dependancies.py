@@ -1,19 +1,22 @@
-from fastapi import Request, HTTPException, status, Depends
+from typing import List
+
+from fastapi import Request, Depends
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlmodel.ext.asyncio.session import AsyncSession
-from typing import List
-from src.db.redis import token_in_blocklist
-from .utils import decode_token
-from ..db.main import get_session
-from .service import UserService
+
 from src.db.models import User
+from src.db.redis import token_in_blocklist
 from src.errors import (
     InvalidToken,
+    RevokedToken,
     RefreshTokenRequired,
     AccessTokenRequired,
     InsufficientPermission,
     UserNotFound,
 )
+from ..db.main import get_session
+from .service import UserService
+from .utils import decode_token
 
 user_service = UserService()
 
@@ -30,7 +33,7 @@ class TokenBearer(HTTPBearer):
         if not self.token_valid(token):
             raise InvalidToken()
         if await token_in_blocklist(token_data['jti']):
-            raise InvalidToken()
+            raise RevokedToken()
 
         self.verify_token_data(token_data)
 
