@@ -1,18 +1,29 @@
 from datetime import timedelta, datetime
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, status
 from fastapi.responses import JSONResponse
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from src.db.main import get_session
 from src.db.redis import add_jti_to_blocklist
+from src.errors import (
+    UserEmailAlreadyExists,
+    UserUsernameAlreadyExists,
+    InvalidCredentials,
+    InvalidToken,
+)
 from .dependancies import (
     RefreshTokenBearer,
     AccessTokenBearer,
     get_current_user,
     RoleChecker
 )
-from .schemas import UserCreateModel, UserModel, UserLoginModel, UserBooksModel
+from .schemas import (
+    UserCreateModel,
+    UserModel,
+    UserLoginModel,
+    UserBooksModel
+)
 from .service import UserService
 from .utils import create_access_token, verify_password
 
@@ -37,11 +48,11 @@ async def create_user_Account(
 
     user_email_exists = await user_service.user_email_exists(session, email)
     if user_email_exists:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Email already exists")
+        raise UserEmailAlreadyExists()
 
     user_username_exists = await user_service.user_username_exists(session, user_username)
     if user_username_exists:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Username already exists")
+        raise UserUsernameAlreadyExists()
 
     new_user = await user_service.create_user(session, user_data)
     return new_user
@@ -89,10 +100,7 @@ async def login_user(login_data: UserLoginModel, session: AsyncSession = Depends
                     }
                 }
             )
-    raise HTTPException(
-        status_code=status.HTTP_403_FORBIDDEN,
-        detail="Incorrect email or password",
-    )
+    raise InvalidCredentials()
 
 
 @auth_router.get('/refresh_token')
@@ -106,7 +114,7 @@ async def get_new_access_token(token_details: dict = Depends(RefreshTokenBearer(
 
         return JSONResponse(content={'access_token': new_access_token})
 
-    raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid or expired token")
+    raise InvalidToken()
 
 
 @auth_router.get('/me', response_model=UserBooksModel)

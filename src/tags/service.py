@@ -5,11 +5,10 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 from src.books.service import BookService
 from src.db.models import Tag
-
+from src.errors import BookNotFound, TagNotFound, TagAlreadyExists
 from .schemas import TagAddModel, TagCreateModel
 
 book_service = BookService()
-
 
 server_error = HTTPException(
     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Something went wrong"
@@ -24,11 +23,11 @@ class TagService:
         return result.all()
 
     async def add_tags_to_book(
-        self, book_uid: str, tag_data: TagAddModel, session: AsyncSession
+            self, book_uid: str, tag_data: TagAddModel, session: AsyncSession
     ):
         book = await book_service.get_book(book_uid=book_uid, session=session)
         if not book:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Book not found")
+            raise BookNotFound()
         for tag_item in tag_data.tags:
             result = await session.exec(select(Tag).where(Tag.name == tag_item.name))
             tag = result.one_or_none()
@@ -50,18 +49,18 @@ class TagService:
         result = await session.exec(statement)
         tag = result.first()
         if tag:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Tag already exists")
+            raise TagAlreadyExists()
         new_tag = Tag(name=tag_data.name)
         session.add(new_tag)
         await session.commit()
         return new_tag
 
     async def update_tag(
-        self, tag_uid, tag_update_data: TagCreateModel, session: AsyncSession
+            self, tag_uid, tag_update_data: TagCreateModel, session: AsyncSession
     ):
         tag = await self.get_tag_by_uid(tag_uid, session)
         if not tag:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+            raise TagNotFound()
         update_data_dict = tag_update_data.model_dump()
         for k, v in update_data_dict.items():
             setattr(tag, k, v)
@@ -72,6 +71,6 @@ class TagService:
     async def delete_tag(self, tag_uid: str, session: AsyncSession):
         tag = self.get_tag_by_uid(tag_uid, session)
         if not tag:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tag not found")
+            raise TagNotFound()
         await session.delete(tag)
         await session.commit()

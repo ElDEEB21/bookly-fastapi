@@ -1,6 +1,13 @@
 from src.db.models import User
 from .schemas import UserCreateModel
-from .utils import generate_passwd_hash, verify_password
+from .utils import generate_passwd_hash
+from src.errors import (
+    InvalidToken,
+    RefreshTokenRequired,
+    AccessTokenRequired,
+    InsufficientPermission
+)
+
 from sqlmodel.ext.asyncio.session import AsyncSession
 from sqlmodel import select
 

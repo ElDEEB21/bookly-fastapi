@@ -6,6 +6,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 from src.auth.dependancies import AccessTokenBearer, RoleChecker
 from src.db.main import get_session
+from src.errors import BookNotFound
 from .schemas import Book, BookUpdateModel, BookCreateModel, BookDetailModel
 from .service import BookService
 
@@ -47,7 +48,7 @@ async def get_book(book_uid: str, session: AsyncSession = Depends(get_session),
                    token_details: dict = Depends(access_token_bearer)):
     book = await book_service.get_book(session, book_uid)
     if not book:
-        raise HTTPException(status_code=404, detail="Book not found")
+        raise BookNotFound()
     return book
 
 
@@ -56,7 +57,7 @@ async def patch_book(book_uid: str, new_data: BookUpdateModel, session: AsyncSes
                      token_details: dict = Depends(access_token_bearer)) -> Book:
     updated_book = await book_service.update_book(session, book_uid, new_data)
     if not updated_book:
-        raise HTTPException(status_code=404, detail="Book not found")
+        raise BookNotFound()
     return updated_book
 
 
@@ -65,5 +66,5 @@ async def delete_book(book_uid: str, session: AsyncSession = Depends(get_session
                       token_details: dict = Depends(access_token_bearer)):
     deleted_book = await book_service.delete_book(session, book_uid)
     if not deleted_book:
-        raise HTTPException(status_code=404, detail="Book not found")
-    return None
+        raise BookNotFound()
+    return {}
