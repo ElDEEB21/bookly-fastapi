@@ -17,10 +17,13 @@ from .schemas import (
     UserCreateModel,
     UserModel,
     UserLoginModel,
-    UserBooksModel
+    UserBooksModel,
+    EmailModel
 )
 from .service import UserService
-from .utils import create_access_token
+from .utils import create_access_token, create_url_safe_token, decode_url_safe_token
+from ..config import Config
+from ..mail import create_message, mail
 
 auth_router = APIRouter()
 user_service = UserService()
@@ -29,9 +32,62 @@ role_checker = RoleChecker(allowed_roles=["admin", "user"])
 REFRESH_TOKEN_EXPIRY = 2
 
 
+@auth_router.post('/send_mail')
+async def send_mail(emails: EmailModel):
+    emails = emails.addresses
+
+    html = "<h1>Welcome to our app</h1><p>We're excited to have you on board!</p>"
+
+    message = create_message(
+        recipients=emails,
+        subject="Welcome to our app",
+        body=html
+    )
+
+    await mail.send_message(message)
+    return JSONResponse(
+        content={
+            "message": "Email sent successfully",
+        },
+        status_code=status.HTTP_200_OK
+    )
+
+@auth_router.get('/verify/{token}')
+async def verify_email(token: str, session: AsyncSession = Depends(get_session)):
+    try:
+        token_data = decode_url_safe_token(token, max_age=3600)
+        email = token_data.get("email")
+        uid = token_data.get("uid")
+
+        user = await user_service.get_user_by_email(session, email)
+
+        if not user or str(user.uid) != uid:
+            return JSONResponse(
+                content={"message": "Invalid token or user not found"},
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
+
+        if user.is_verified:
+            return JSONResponse(
+                content={"message": "Email already verified"},
+                status_code=status.HTTP_200_OK
+            )
+
+        await user_service.verify_user(session, user)
+
+        return JSONResponse(
+            content={"message": "Email verified successfully"},
+            status_code=status.HTTP_200_OK
+        )
+
+    except Exception as e:
+        return JSONResponse(
+            content={"message": "Invalid or expired token"},
+            status_code=status.HTTP_400_BAD_REQUEST
+        )
+
 @auth_router.post(
     "/signup",
-    response_model=UserModel,
     status_code=status.HTTP_201_CREATED,
 )
 async def create_user_Account(
@@ -39,7 +95,30 @@ async def create_user_Account(
         session: AsyncSession = Depends(get_session)
 ):
     new_user = await user_service.create_user(session, user_data)
-    return new_user
+
+    token = create_url_safe_token({"email": new_user.email, "uid": str(new_user.uid)})
+
+    link = f"http://{Config.DOMAIN}/api/v1/auth/verify/{token}"
+
+    html_message = f"""
+    <h1>Welcome to our app</h1>
+    <p>We're excited to have you on board! Please verify your email address by clicking
+    the link below:</p>
+    <a href="{link}">Verify Email</a>
+    """
+
+    message = create_message(
+        recipients=[new_user.email],
+        subject="Verify Your Email",
+        body=html_message
+    )
+
+    await mail.send_message(message)
+
+    return {
+        "message": "User created successfully. Please check your email to verify your account.",
+        "user": new_user,
+    }
 
 
 @auth_router.post(

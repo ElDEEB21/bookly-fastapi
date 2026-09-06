@@ -63,3 +63,9 @@ class UserService:
             raise InvalidCredentials()
 
         return user
+
+    async def verify_user(self, session: AsyncSession, user: User):
+        user.is_verified = True
+        session.add(user)
+        await session.commit()
+        return user

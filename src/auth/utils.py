@@ -1,6 +1,7 @@
 import logging
 import uuid
 from datetime import timedelta, datetime
+from itsdangerous import URLSafeTimedSerializer
 
 import bcrypt
 import jwt
@@ -46,5 +47,20 @@ def decode_token(token: str) -> dict:
         return token_data
 
     except jwt.PyJWTError as e:
+        logging.exception(e)
+        return None
+
+
+serializer = URLSafeTimedSerializer(Config.JWT_SECRET)
+
+def create_url_safe_token(data: dict) -> str:
+    token = serializer.dumps(data, salt="email-confirmation")
+    return token
+
+def decode_url_safe_token(token: str, max_age: int = 3600) -> dict:
+    try:
+        data = serializer.loads(token, salt="email-confirmation", max_age=max_age)
+        return data
+    except Exception as e:
         logging.exception(e)
         return None
