@@ -69,3 +69,9 @@ class UserService:
         session.add(user)
         await session.commit()
         return user
+
+    async def update_password(self, session: AsyncSession, user: User, new_password: str):
+        user.password_hash = generate_passwd_hash(new_password)
+        session.add(user)
+        await session.commit()
+        return user
