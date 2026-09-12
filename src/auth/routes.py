@@ -1,12 +1,13 @@
 from datetime import timedelta, datetime
 
-from fastapi import APIRouter, Depends, status, HTTPException
+from fastapi import APIRouter, Depends, status, HTTPException, BackgroundTasks
 from fastapi.responses import JSONResponse
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from src.db.main import get_session
 from src.db.redis import add_jti_to_blocklist
 from src.errors import InvalidToken, UserNotFound
+from src.celeryTasks import send_email
 from .dependancies import (
     RefreshTokenBearer,
     AccessTokenBearer,
@@ -39,17 +40,9 @@ async def send_mail(emails: EmailModel):
 
     html = "<h1>Welcome to our app</h1><p>We're excited to have you on board!</p>"
 
-    message = create_message(
-        recipients=emails,
-        subject="Welcome to our app",
-        body=html
-    )
-
-    await mail.send_message(message)
+    send_email.delay(recipients=emails, subject="Welcome to our app", body=html)
     return JSONResponse(
-        content={
-            "message": "Email sent successfully",
-        },
+        content={"message": "Email sent successfully",},
         status_code=status.HTTP_200_OK
     )
 
@@ -95,6 +88,7 @@ async def verify_email(token: str, session: AsyncSession = Depends(get_session))
 )
 async def create_user_Account(
         user_data: UserCreateModel,
+        bg_tasks: BackgroundTasks,
         session: AsyncSession = Depends(get_session)
 ):
     new_user = await user_service.create_user(session, user_data)
@@ -110,13 +104,11 @@ async def create_user_Account(
     <a href="{link}">Verify Email</a>
     """
 
-    message = create_message(
+    send_email.delay(
         recipients=[new_user.email],
         subject="Verify Your Email",
         body=html_message
     )
-
-    await mail.send_message(message)
 
     return {
         "message": "User created successfully. Please check your email to verify your account.",
@@ -252,13 +244,11 @@ async def password_reset_request(email_data: PasswordResetRequestModel, session:
     <a href="{link}">Reset Password</a>
     """
 
-    message = create_message(
+    send_email.delay(
         recipients=[user.email],
         subject="Password Reset Request",
         body=html_message
     )
-
-    await mail.send_message(message)
 
     return JSONResponse(
         content={"message": "Please check your email for the password reset link."},
