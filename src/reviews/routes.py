@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, status
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from src.db.models import Review, User
-from src.auth.dependancies import get_current_user
+from src.auth.dependencies import get_current_user
 from src.db.main import get_session
 from src.reviews.schemas import ReviewCreateModel
 from src.reviews.services import ReviewService

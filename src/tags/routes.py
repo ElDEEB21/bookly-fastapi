@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, status
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 
-from src.auth.dependancies import RoleChecker
+from src.auth.dependencies import RoleChecker
 from src.db.main import get_session
 
 from .schemas import TagAddModel, TagCreateModel, TagModel

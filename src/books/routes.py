@@ -3,7 +3,7 @@ from typing import List
 from fastapi import APIRouter, status, Depends
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from src.auth.dependancies import AccessTokenBearer, RoleChecker
+from src.auth.dependencies import AccessTokenBearer, RoleChecker
 from src.db.main import get_session
 from .schemas import Book, BookUpdateModel, BookCreateModel, BookDetailModel
 from .service import BookService

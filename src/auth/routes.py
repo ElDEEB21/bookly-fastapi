@@ -8,7 +8,7 @@ from src.db.main import get_session
 from src.db.redis import add_jti_to_blocklist
 from src.errors import InvalidToken, UserNotFound
 from src.celeryTasks import send_email
-from .dependancies import (
+from .dependencies import (
     RefreshTokenBearer,
     AccessTokenBearer,
     get_current_user,
