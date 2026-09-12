@@ -88,22 +88,17 @@ pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
-3. Create a `.env` file in the project root (see [Configuration](#configuration)):
+3. Create a `.env` file from the example (see [Configuration](#configuration) for every variable):
 
-```env
-DATABASE_URL=postgresql://postgres:postgres@localhost:5432/bookly
-REDIS_URL=redis://localhost:6379/0
-JWT_SECRET=change-me-to-a-long-random-string
-JWT_ALGORITHM=HS256
-DOMAIN=localhost:8000
-SCHEME=http
-MAIL_USERNAME=you@example.com
-MAIL_PASSWORD=app-password
-MAIL_FROM=noreply@example.com
-MAIL_FROM_NAME=Bookly
-MAIL_SERVER=smtp.example.com
-MAIL_PORT=587
+```bash
+# macOS / Linux
+cp .env.example .env
+
+# Windows (PowerShell)
+Copy-Item .env.example .env
 ```
+
+Then edit `.env` and at minimum set `JWT_SECRET`, `DATABASE_URL`, `REDIS_URL`, and the `MAIL_*` SMTP settings.
 
 4. Apply migrations:
 
