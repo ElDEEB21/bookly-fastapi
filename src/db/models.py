@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime, date
+from datetime import datetime, date, timezone
 from typing import List, Optional
 
 import sqlalchemy.dialects.postgresql as pg
@@ -7,13 +7,17 @@ from sqlalchemy import Column
 from sqlmodel import SQLModel, Field, Relationship
 
 
+def _utcnow():
+    return datetime.now(timezone.utc)
+
+
 class User(SQLModel, table=True):
     __tablename__ = "users"
     uid: uuid.UUID = Field(
         sa_column=Column(pg.UUID, nullable=False, primary_key=True, default=uuid.uuid4)
     )
-    username: str
-    email: str
+    username: str = Field(sa_column=Column(pg.VARCHAR, nullable=False, unique=True))
+    email: str = Field(sa_column=Column(pg.VARCHAR, nullable=False, unique=True))
     first_name: str
     last_name: str
     role: str = Field(
@@ -21,18 +25,18 @@ class User(SQLModel, table=True):
     )
     is_verified: bool = Field(default=False)
     password_hash: str = Field(exclude=True)
-    created_at: datetime = Field(sa_column=Column(pg.TIMESTAMP, default=datetime.now))
-    updated_at: datetime = Field(sa_column=Column(pg.TIMESTAMP, default=datetime.now))
-    books: List["Book"] = Relationship(back_populates="user", sa_relationship_kwargs={'lazy': 'selectin'})
-    reviews: List["Review"] = Relationship(back_populates="user", sa_relationship_kwargs={"lazy": "selectin"})
+    created_at: datetime = Field(sa_column=Column(pg.TIMESTAMP(timezone=True), default=_utcnow))
+    updated_at: datetime = Field(sa_column=Column(pg.TIMESTAMP(timezone=True), default=_utcnow, onupdate=_utcnow))
+    books: List["Book"] = Relationship(back_populates="user", sa_relationship_kwargs={"lazy": "selectin", "cascade": "all, delete-orphan"})
+    reviews: List["Review"] = Relationship(back_populates="user", sa_relationship_kwargs={"lazy": "selectin", "cascade": "all, delete-orphan"})
 
     def __repr__(self):
         return f"<User {self.username}>"
 
 
 class BookTag(SQLModel, table=True):
-    book_id: uuid.UUID = Field(default=None, foreign_key="books.uid", primary_key=True)
-    tag_id: uuid.UUID = Field(default=None, foreign_key="tags.uid", primary_key=True)
+    book_id: uuid.UUID = Field(default=None, foreign_key="books.uid", primary_key=True, ondelete="CASCADE")
+    tag_id: uuid.UUID = Field(default=None, foreign_key="tags.uid", primary_key=True, ondelete="CASCADE")
 
 
 class Book(SQLModel, table=True):
@@ -52,11 +56,11 @@ class Book(SQLModel, table=True):
     published_date: date
     page_count: int
     language: str
-    user_uid: Optional[uuid.UUID] = Field(default=None, foreign_key="users.uid")
-    created_at: datetime = Field(sa_column=Column(pg.TIMESTAMP, default=datetime.now))
-    updated_at: datetime = Field(sa_column=Column(pg.TIMESTAMP, default=datetime.now))
+    user_uid: Optional[uuid.UUID] = Field(default=None, foreign_key="users.uid", ondelete="CASCADE")
+    created_at: datetime = Field(sa_column=Column(pg.TIMESTAMP(timezone=True), default=_utcnow))
+    updated_at: datetime = Field(sa_column=Column(pg.TIMESTAMP(timezone=True), default=_utcnow, onupdate=_utcnow))
     user: Optional["User"] = Relationship(back_populates="books")
-    reviews: List["Review"] = Relationship(back_populates="book", sa_relationship_kwargs={"lazy": "selectin"})
+    reviews: List["Review"] = Relationship(back_populates="book", sa_relationship_kwargs={"lazy": "selectin", "cascade": "all, delete-orphan"})
     tags: List["Tag"] = Relationship(link_model=BookTag, back_populates="books", sa_relationship_kwargs={"lazy": "selectin"})
 
     def __repr__(self):
@@ -70,10 +74,10 @@ class Review(SQLModel, table=True):
     )
     rating: int = Field(ge=1, le=5)
     review_text: str = Field(sa_column=Column(pg.VARCHAR, nullable=False))
-    user_uid: Optional[uuid.UUID] = Field(default=None, foreign_key="users.uid")
-    book_uid: Optional[uuid.UUID] = Field(default=None, foreign_key="books.uid")
-    created_at: datetime = Field(sa_column=Column(pg.TIMESTAMP, default=datetime.now))
-    update_at: datetime = Field(sa_column=Column(pg.TIMESTAMP, default=datetime.now))
+    user_uid: Optional[uuid.UUID] = Field(default=None, foreign_key="users.uid", ondelete="CASCADE")
+    book_uid: Optional[uuid.UUID] = Field(default=None, foreign_key="books.uid", ondelete="CASCADE")
+    created_at: datetime = Field(sa_column=Column(pg.TIMESTAMP(timezone=True), default=_utcnow))
+    update_at: datetime = Field(sa_column=Column(pg.TIMESTAMP(timezone=True), default=_utcnow, onupdate=_utcnow))
     user: Optional[User] = Relationship(back_populates="reviews")
     book: Optional[Book] = Relationship(back_populates="reviews")
 
@@ -86,8 +90,8 @@ class Tag(SQLModel, table=True):
     uid: uuid.UUID = Field(
         sa_column=Column(pg.UUID, nullable=False, primary_key=True, default=uuid.uuid4)
     )
-    name: str = Field(sa_column=Column(pg.VARCHAR, nullable=False))
-    created_at: datetime = Field(sa_column=Column(pg.TIMESTAMP, default=datetime.now))
+    name: str = Field(sa_column=Column(pg.VARCHAR, nullable=False, unique=True))
+    created_at: datetime = Field(sa_column=Column(pg.TIMESTAMP(timezone=True), default=_utcnow))
     books: List["Book"] = Relationship(
         link_model=BookTag,
         back_populates="tags",

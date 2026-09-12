@@ -1,12 +1,29 @@
 import redis.asyncio as redis
 from src.config import Config
 
-JTI_EXPIRY = 3600
+ACCESS_JTI_EXPIRY = 3600
+REFRESH_JTI_EXPIRY = 60 * 60 * 24 * 2
 
-token_blocklist = redis.from_url(Config.REDIS_URL)
-async def add_jti_to_blocklist(jti: str) -> None:
-    await token_blocklist.set(name=jti, value="", ex=JTI_EXPIRY)
+_client = None
+
+def get_redis_client():
+    global _client
+    if _client is None:
+        _client = redis.from_url(Config.REDIS_URL)
+    return _client
+
+async def add_jti_to_blocklist(jti: str, expiry: int = ACCESS_JTI_EXPIRY) -> None:
+    client = get_redis_client()
+    await client.set(name=jti, value="", ex=expiry)
 
 async def token_in_blocklist(jti: str) -> bool:
-    jti = await token_blocklist.get(jti)
-    return jti is not None
+    client = get_redis_client()
+    value = await client.get(jti)
+    return value is not None
+
+async def check_rate_limit(key: str, limit: int, window_seconds: int) -> bool:
+    client = get_redis_client()
+    count = await client.incr(key)
+    if count == 1:
+        await client.expire(key, window_seconds)
+    return count <= limit

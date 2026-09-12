@@ -1,11 +1,11 @@
-from datetime import timedelta
+from datetime import timedelta, datetime, timezone
 
-from fastapi import APIRouter, Depends, status, HTTPException, BackgroundTasks
+from fastapi import APIRouter, Depends, status, HTTPException
 from fastapi.responses import JSONResponse
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from src.db.main import get_session
-from src.db.redis import add_jti_to_blocklist
+from src.db.redis import REFRESH_JTI_EXPIRY, ACCESS_JTI_EXPIRY, add_jti_to_blocklist, check_rate_limit
 from src.errors import InvalidToken, UserNotFound
 from src.celeryTasks import send_email
 from .dependencies import (
@@ -20,12 +20,13 @@ from .schemas import (
     UserBooksModel,
     EmailModel,
     PasswordResetRequestModel,
-    PasswordResetConfirmModel
+    PasswordResetConfirmModel,
+    ResendVerificationModel,
+    UserRoleUpdateModel
 )
 from .service import UserService
-from .utils import create_access_token, create_url_safe_token, decode_url_safe_token
+from .utils import EMAIL_VERIFICATION_SALT, PASSWORD_RESET_SALT, create_access_token, create_url_safe_token, decode_url_safe_token
 from ..config import Config
-from ..mail import create_message, mail
 
 auth_router = APIRouter()
 user_service = UserService()
@@ -34,7 +35,11 @@ role_checker = RoleChecker(allowed_roles=["admin", "user"])
 REFRESH_TOKEN_EXPIRY = 2
 
 
-@auth_router.post('/send_mail')
+def _build_auth_link(path: str) -> str:
+    return f"{Config.SCHEME}://{Config.DOMAIN}{path}"
+
+
+@auth_router.post('/send_mail', dependencies=[Depends(RoleChecker(allowed_roles=["admin"]))])
 async def send_mail(emails: EmailModel):
     emails = emails.addresses
 
@@ -49,7 +54,7 @@ async def send_mail(emails: EmailModel):
 
 @auth_router.get('/verify/{token}')
 async def verify_email(token: str, session: AsyncSession = Depends(get_session)):
-    token_data = decode_url_safe_token(token, max_age=3600)
+    token_data = decode_url_safe_token(token, max_age=3600, salt=EMAIL_VERIFICATION_SALT)
     if not token_data:
         return JSONResponse(
             content={"message": "Invalid or expired token"},
@@ -92,14 +97,13 @@ async def verify_email(token: str, session: AsyncSession = Depends(get_session))
 )
 async def create_user_Account(
         user_data: UserCreateModel,
-        bg_tasks: BackgroundTasks,
         session: AsyncSession = Depends(get_session)
 ):
     new_user = await user_service.create_user(session, user_data)
 
-    token = create_url_safe_token({"email": new_user.email, "uid": str(new_user.uid)})
+    token = create_url_safe_token({"email": new_user.email, "uid": str(new_user.uid)}, salt=EMAIL_VERIFICATION_SALT)
 
-    link = f"http://{Config.DOMAIN}/api/v1/auth/verify/{token}"
+    link = _build_auth_link(f"/api/v1/auth/verify/{token}")
 
     html_message = f"""
     <h1>Welcome to our app</h1>
@@ -128,10 +132,37 @@ async def create_user_Account(
 
 
 @auth_router.post(
+    "/resend-verification",
+    status_code=status.HTTP_200_OK,
+)
+async def resend_verification(email_data: ResendVerificationModel, session: AsyncSession = Depends(get_session)):
+    allowed = await check_rate_limit(f"resend:{email_data.email}", limit=3, window_seconds=3600)
+    if not allowed:
+        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="Too many requests")
+    user = await user_service.get_user_by_email(session, email_data.email)
+    if not user:
+        return JSONResponse(content={"message": "If the email exists, a verification link was sent"}, status_code=status.HTTP_200_OK)
+    if user.is_verified:
+        return JSONResponse(content={"message": "Email already verified"}, status_code=status.HTTP_200_OK)
+    token = create_url_safe_token({"email": user.email, "uid": str(user.uid)}, salt=EMAIL_VERIFICATION_SALT)
+    link = _build_auth_link(f"/api/v1/auth/verify/{token}")
+    html_message = f"""
+    <h1>Verify your email</h1>
+    <p>Click the link below to verify your email address:</p>
+    <a href="{link}">Verify Email</a>
+    """
+    send_email.delay(recipients=[user.email], subject="Verify Your Email", body=html_message)
+    return JSONResponse(content={"message": "Verification email sent"}, status_code=status.HTTP_200_OK)
+
+
+@auth_router.post(
     "/login",
     status_code=status.HTTP_200_OK,
 )
 async def login_user(login_data: UserLoginModel, session: AsyncSession = Depends(get_session)):
+    allowed = await check_rate_limit(f"login:{login_data.email}", limit=5, window_seconds=300)
+    if not allowed:
+        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="Too many login attempts")
     email = login_data.email
     password = login_data.password
 
@@ -167,7 +198,7 @@ async def login_user(login_data: UserLoginModel, session: AsyncSession = Depends
     )
 
 
-@auth_router.get('/refresh_token')
+@auth_router.post('/refresh_token')
 async def get_new_access_token(token_details: dict = Depends(RefreshTokenBearer())):
     new_access_token = create_access_token(
         user_data=token_details['user']
@@ -181,11 +212,25 @@ async def get_current_user(user=Depends(get_current_user), _: bool = Depends(rol
     return user
 
 
-@auth_router.get('/logout')
-async def revoke_token(token_details: dict = Depends(AccessTokenBearer())):
-    jti = token_details['jti']
+@auth_router.patch('/{user_uid}/role', dependencies=[Depends(RoleChecker(allowed_roles=["admin"]))])
+async def update_user_role(user_uid: str, role_data: UserRoleUpdateModel, session: AsyncSession = Depends(get_session)):
+    target = await user_service.get_user_by_uid(session, user_uid)
+    if not target:
+        raise UserNotFound()
+    updated = await user_service.update_role(session, target, role_data.role)
+    return {"uid": str(updated.uid), "email": updated.email, "role": updated.role}
 
-    await add_jti_to_blocklist(jti)
+
+@auth_router.post('/logout')
+async def revoke_token(token_details: dict = Depends(AccessTokenBearer())):
+    jti = token_details.get('jti')
+    exp = token_details.get('exp')
+    ttl = ACCESS_JTI_EXPIRY
+    if exp:
+        remaining = int(exp - datetime.now(timezone.utc).timestamp())
+        if remaining > 0:
+            ttl = min(remaining, REFRESH_JTI_EXPIRY)
+    await add_jti_to_blocklist(jti, expiry=ttl)
 
     return JSONResponse(
         content={
@@ -197,7 +242,7 @@ async def revoke_token(token_details: dict = Depends(AccessTokenBearer())):
 
 @auth_router.post('/password-reset-confirm/{token}')
 async def password_reset_confirm(token: str, password_data: PasswordResetConfirmModel, session: AsyncSession = Depends(get_session)):
-    token_data = decode_url_safe_token(token, max_age=3600)
+    token_data = decode_url_safe_token(token, max_age=3600, salt=PASSWORD_RESET_SALT)
     if not token_data:
         raise InvalidToken()
 
@@ -228,19 +273,22 @@ async def password_reset_confirm(token: str, password_data: PasswordResetConfirm
 
 @auth_router.post('/password-reset-request')
 async def password_reset_request(email_data: PasswordResetRequestModel, session: AsyncSession = Depends(get_session)):
+    allowed = await check_rate_limit(f"reset:{email_data.email}", limit=3, window_seconds=3600)
+    if not allowed:
+        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="Too many requests")
     email = email_data.email
 
     user = await user_service.get_user_by_email(session, email)
 
     if not user:
         return JSONResponse(
-            content={"message": "User not found"},
-            status_code=status.HTTP_404_NOT_FOUND
+            content={"message": "If the email exists, a reset link was sent"},
+            status_code=status.HTTP_200_OK
         )
 
-    token = create_url_safe_token({"email": user.email, "uid": str(user.uid)})
+    token = create_url_safe_token({"email": user.email, "uid": str(user.uid)}, salt=PASSWORD_RESET_SALT)
 
-    link = f"http://{Config.DOMAIN}/api/v1/auth/password-reset-confirm/{token}"
+    link = _build_auth_link(f"/api/v1/auth/password-reset-confirm/{token}")
 
     html_message = f"""
     <h1>Password Reset Request</h1>

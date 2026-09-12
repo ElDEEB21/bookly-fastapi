@@ -62,6 +62,14 @@ class AccountNotVerified(BooklyException):
     """Account not yet verified"""
     pass
 
+class ReviewAlreadyExists(BooklyException):
+    """Review already exists"""
+    pass
+
+class NotBookOwner(BooklyException):
+    """User does not own this book"""
+    pass
+
 def create_exception_handler(status_code: int, initial_detail: Any) -> Callable[[Request, Exception], JSONResponse]:
     async def exception_handler(request: Request, exc: BooklyException) -> JSONResponse:
         return JSONResponse(
@@ -171,10 +179,30 @@ def register_all_errors(app: FastAPI) -> None:
     app.add_exception_handler(
         InsufficientPermission,
         create_exception_handler(
-            status_code=status.HTTP_401_UNAUTHORIZED,
+            status_code=status.HTTP_403_FORBIDDEN,
             initial_detail={
                 "message": "You do not have enough permissions to perform this action",
                 "error_code": "insufficient_permissions",
+            },
+        ),
+    )
+    app.add_exception_handler(
+        NotBookOwner,
+        create_exception_handler(
+            status_code=status.HTTP_403_FORBIDDEN,
+            initial_detail={
+                "message": "You do not own this book",
+                "error_code": "not_book_owner",
+            },
+        ),
+    )
+    app.add_exception_handler(
+        ReviewAlreadyExists,
+        create_exception_handler(
+            status_code=status.HTTP_409_CONFLICT,
+            initial_detail={
+                "message": "You have already reviewed this book",
+                "error_code": "review_exists",
             },
         ),
     )

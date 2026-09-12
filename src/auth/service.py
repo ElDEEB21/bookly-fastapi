@@ -20,6 +20,14 @@ class UserService:
 
         return user
 
+    async def get_user_by_uid(self, session: AsyncSession, uid: str):
+        statement = select(User).where(User.uid == uid)
+
+        result = await session.exec(statement)
+        user = result.first()
+
+        return user
+
     async def get_user_by_username(self, session: AsyncSession, username: str):
         statement = select(User).where(User.username == username)
 
@@ -48,7 +56,15 @@ class UserService:
         password = user_data_dict.pop("password")
         new_user = User(**user_data_dict)
         new_user.password_hash = generate_passwd_hash(password)
-        new_user.role = "user"
+        existing = (await session.exec(select(User).limit(1))).first()
+        if existing is None:
+            new_user.role = "admin"
+        else:
+            from src.config import Config as AppConfig
+            if AppConfig.FIRST_ADMIN_EMAIL and user_data_dict.get("email") == AppConfig.FIRST_ADMIN_EMAIL:
+                new_user.role = "admin"
+            else:
+                new_user.role = "user"
 
         session.add(new_user)
         await session.commit()
@@ -76,4 +92,11 @@ class UserService:
         user.password_hash = generate_passwd_hash(new_password)
         session.add(user)
         await session.commit()
+        return user
+
+    async def update_role(self, session: AsyncSession, user: User, role: str):
+        user.role = role
+        session.add(user)
+        await session.commit()
+        await session.refresh(user)
         return user

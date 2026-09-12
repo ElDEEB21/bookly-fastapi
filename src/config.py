@@ -16,6 +16,10 @@ class Settings(BaseSettings):
     USE_CREDENTIALS: bool = True
     VALIDATE_CERTS: bool = True
     DOMAIN: str
+    SCHEME: str = "http"
+    CORS_ORIGINS: str = "http://localhost:3000,http://localhost:8000"
+    TRUSTED_HOSTS: str = "localhost,127.0.0.1"
+    FIRST_ADMIN_EMAIL: str = ""
 
     model_config = SettingsConfigDict(
         env_file=".env",

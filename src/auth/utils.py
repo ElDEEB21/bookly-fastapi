@@ -1,6 +1,6 @@
 import logging
 import uuid
-from datetime import timedelta, datetime
+from datetime import timedelta, datetime, timezone
 from itsdangerous import URLSafeTimedSerializer
 
 import bcrypt
@@ -9,6 +9,8 @@ import jwt
 from src.config import Config
 
 ACCESS_TOKEN_EXPIRY = 3600
+EMAIL_VERIFICATION_SALT = "email-verification"
+PASSWORD_RESET_SALT = "password-reset"
 
 
 def generate_passwd_hash(password: str):
@@ -24,7 +26,7 @@ def verify_password(password: str, hashed_password: str) -> bool:
 def create_access_token(user_data: dict, expiry: timedelta = None, refresh: bool = False):
     payload = {
         'user': user_data,
-        'exp': datetime.now() + (expiry if expiry else timedelta(seconds=ACCESS_TOKEN_EXPIRY)),
+        'exp': datetime.now(timezone.utc) + (expiry if expiry else timedelta(seconds=ACCESS_TOKEN_EXPIRY)),
         'jti': str(uuid.uuid4()),
         'refresh': refresh,
     }
@@ -53,13 +55,13 @@ def decode_token(token: str) -> dict:
 
 serializer = URLSafeTimedSerializer(Config.JWT_SECRET)
 
-def create_url_safe_token(data: dict) -> str:
-    token = serializer.dumps(data, salt="email-confirmation")
+def create_url_safe_token(data: dict, salt: str = EMAIL_VERIFICATION_SALT) -> str:
+    token = serializer.dumps(data, salt=salt)
     return token
 
-def decode_url_safe_token(token: str, max_age: int = 3600) -> dict:
+def decode_url_safe_token(token: str, max_age: int = 3600, salt: str = EMAIL_VERIFICATION_SALT) -> dict:
     try:
-        data = serializer.loads(token, salt="email-confirmation", max_age=max_age)
+        data = serializer.loads(token, salt=salt, max_age=max_age)
         return data
     except Exception as e:
         logging.exception(e)

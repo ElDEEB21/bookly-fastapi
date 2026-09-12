@@ -65,15 +65,10 @@ class RefreshTokenBearer(TokenBearer):
 async def get_current_user(token_details: dict = Depends(AccessTokenBearer()),
                            session: AsyncSession = Depends(get_session)):
     user_info = token_details.get('user', {}) if isinstance(token_details, dict) else {}
-    user = None
-    if user_info.get('user_uuid'):
-        statement_user = user_info.get('user_uuid')
-        from sqlmodel import select
-        statement = select(User).where(User.uid == statement_user)
-        result = await session.exec(statement)
-        user = result.first()
-    if user is None and user_info.get('email'):
-        user = await user_service.get_user_by_email(session, user_info.get('email'))
+    user_uuid = user_info.get('user_uuid')
+    if not user_uuid:
+        raise UserNotFound()
+    user = await user_service.get_user_by_uid(session, user_uuid)
     if not user:
         raise UserNotFound()
     return user

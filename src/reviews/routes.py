@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, status
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from src.db.models import Review, User
-from src.auth.dependencies import get_current_user
+from src.auth.dependencies import RoleChecker, get_current_user
 from src.db.main import get_session
 from src.reviews.schemas import ReviewCreateModel
 from src.reviews.services import ReviewService
@@ -12,8 +12,9 @@ from src.reviews.services import ReviewService
 review_router = APIRouter()
 
 review_service = ReviewService()
+role_checker = Depends(RoleChecker(["admin", "user"]))
 
-@review_router.post("/book/{book_uid}", response_model=Review, status_code=status.HTTP_201_CREATED)
+@review_router.post("/book/{book_uid}", response_model=Review, status_code=status.HTTP_201_CREATED, dependencies=[role_checker])
 async def add_review_to_book(
         book_uid: str,
         review_data: ReviewCreateModel,
@@ -22,7 +23,7 @@ async def add_review_to_book(
 ):
 
     new_review = await review_service.add_review_to_book(
-        user_email=current_user.email,
+        user_uid=str(current_user.uid),
         book_uid=book_uid,
         review_data=review_data,
         session=session
