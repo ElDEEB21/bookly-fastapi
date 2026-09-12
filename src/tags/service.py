@@ -27,7 +27,8 @@ class TagService:
             tag = result.one_or_none()
             if not tag:
                 tag = Tag(name=tag_item.name)
-            book.tags.append(tag)
+            if tag not in book.tags:
+                book.tags.append(tag)
         session.add(book)
         await session.commit()
         await session.refresh(book)
@@ -47,6 +48,7 @@ class TagService:
         new_tag = Tag(name=tag_data.name)
         session.add(new_tag)
         await session.commit()
+        await session.refresh(new_tag)
         return new_tag
 
     async def update_tag(
@@ -55,11 +57,12 @@ class TagService:
         tag = await self.get_tag_by_uid(tag_uid, session)
         if not tag:
             raise TagNotFound()
-        update_data_dict = tag_update_data.model_dump()
+        update_data_dict = tag_update_data.model_dump(exclude_unset=True)
         for k, v in update_data_dict.items():
             setattr(tag, k, v)
-            await session.commit()
-            await session.refresh(tag)
+        session.add(tag)
+        await session.commit()
+        await session.refresh(tag)
         return tag
 
     async def delete_tag(self, tag_uid: str, session: AsyncSession):

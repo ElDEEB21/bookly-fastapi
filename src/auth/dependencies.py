@@ -28,21 +28,23 @@ class TokenBearer(HTTPBearer):
     async def __call__(self, request: Request) -> HTTPAuthorizationCredentials | None:
         creds = await super().__call__(request)
 
+        if creds is None:
+            raise InvalidToken()
+
         token = creds.credentials
         token_data = decode_token(token)
 
-        if not self.token_valid(token):
+        if not self.token_valid(token_data):
             raise InvalidToken()
-        if await token_in_blocklist(token_data['jti']):
+        if await token_in_blocklist(token_data.get('jti', '')):
             raise RevokedToken()
 
         self.verify_token_data(token_data)
 
         return token_data
 
-    def token_valid(self, token: str) -> bool:
-        token_data = decode_token(token)
-        return token_data is not None
+    def token_valid(self, token_data: dict | None) -> bool:
+        return token_data is not None and isinstance(token_data, dict)
 
     def verify_token_data(self, token_data: dict):
         raise NotImplementedError("Please implement this method in child class")
@@ -50,20 +52,28 @@ class TokenBearer(HTTPBearer):
 
 class AccessTokenBearer(TokenBearer):
     def verify_token_data(self, token_data: dict) -> None:
-        if token_data and token_data['refresh']:
+        if token_data and token_data.get('refresh', False):
             raise AccessTokenRequired()
 
 
 class RefreshTokenBearer(TokenBearer):
     def verify_token_data(self, token_data: dict) -> None:
-        if token_data and not token_data['refresh']:
+        if token_data and not token_data.get('refresh', False):
             raise RefreshTokenRequired()
 
 
 async def get_current_user(token_details: dict = Depends(AccessTokenBearer()),
                            session: AsyncSession = Depends(get_session)):
-    user_email = token_details['user']['email']
-    user = await user_service.get_user_by_email(session, user_email)
+    user_info = token_details.get('user', {}) if isinstance(token_details, dict) else {}
+    user = None
+    if user_info.get('user_uuid'):
+        statement_user = user_info.get('user_uuid')
+        from sqlmodel import select
+        statement = select(User).where(User.uid == statement_user)
+        result = await session.exec(statement)
+        user = result.first()
+    if user is None and user_info.get('email'):
+        user = await user_service.get_user_by_email(session, user_info.get('email'))
     if not user:
         raise UserNotFound()
     return user

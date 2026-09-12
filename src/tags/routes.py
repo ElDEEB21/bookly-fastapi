@@ -72,6 +72,6 @@ async def update_tag(
 async def delete_tag(
     tag_uid: str, session: AsyncSession = Depends(get_session)
 ) -> None:
-    updated_tag = await tag_service.delete_tag(tag_uid, session)
+    await tag_service.delete_tag(tag_uid, session)
 
-    return updated_tag
+    return None

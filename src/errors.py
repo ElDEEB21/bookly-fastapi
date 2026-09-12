@@ -198,17 +198,6 @@ def register_all_errors(app: FastAPI) -> None:
     )
 
     app.add_exception_handler(
-        BookNotFound,
-        create_exception_handler(
-            status_code=status.HTTP_404_NOT_FOUND,
-            initial_detail={
-                "message": "Book Not Found",
-                "error_code": "book_not_found",
-            },
-        ),
-    )
-
-    app.add_exception_handler(
         AccountNotVerified,
         create_exception_handler(
             status_code=status.HTTP_403_FORBIDDEN,

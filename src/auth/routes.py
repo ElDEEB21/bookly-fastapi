@@ -1,4 +1,4 @@
-from datetime import timedelta, datetime
+from datetime import timedelta
 
 from fastapi import APIRouter, Depends, status, HTTPException, BackgroundTasks
 from fastapi.responses import JSONResponse
@@ -49,37 +49,41 @@ async def send_mail(emails: EmailModel):
 
 @auth_router.get('/verify/{token}')
 async def verify_email(token: str, session: AsyncSession = Depends(get_session)):
-    try:
-        token_data = decode_url_safe_token(token, max_age=3600)
-        email = token_data.get("email")
-        uid = token_data.get("uid")
-
-        user = await user_service.get_user_by_email(session, email)
-
-        if not user or str(user.uid) != uid:
-            return JSONResponse(
-                content={"message": "Invalid token or user not found"},
-                status_code=status.HTTP_400_BAD_REQUEST
-            )
-
-        if user.is_verified:
-            return JSONResponse(
-                content={"message": "Email already verified"},
-                status_code=status.HTTP_200_OK
-            )
-
-        await user_service.verify_user(session, user)
-
-        return JSONResponse(
-            content={"message": "Email verified successfully"},
-            status_code=status.HTTP_200_OK
-        )
-
-    except Exception as e:
+    token_data = decode_url_safe_token(token, max_age=3600)
+    if not token_data:
         return JSONResponse(
             content={"message": "Invalid or expired token"},
             status_code=status.HTTP_400_BAD_REQUEST
         )
+    email = token_data.get("email")
+    uid = token_data.get("uid")
+
+    if not email or not uid:
+        return JSONResponse(
+            content={"message": "Invalid token or user not found"},
+            status_code=status.HTTP_400_BAD_REQUEST
+        )
+
+    user = await user_service.get_user_by_email(session, email)
+
+    if not user or str(user.uid) != uid:
+        return JSONResponse(
+            content={"message": "Invalid token or user not found"},
+            status_code=status.HTTP_400_BAD_REQUEST
+        )
+
+    if user.is_verified:
+        return JSONResponse(
+            content={"message": "Email already verified"},
+            status_code=status.HTTP_200_OK
+        )
+
+    await user_service.verify_user(session, user)
+
+    return JSONResponse(
+        content={"message": "Email verified successfully"},
+        status_code=status.HTTP_200_OK
+    )
 
 
 @auth_router.post(
@@ -112,13 +116,19 @@ async def create_user_Account(
 
     return {
         "message": "User created successfully. Please check your email to verify your account.",
-        "user": new_user,
+        "user": {
+            "uid": str(new_user.uid),
+            "username": new_user.username,
+            "email": new_user.email,
+            "first_name": new_user.first_name,
+            "last_name": new_user.last_name,
+            "is_verified": new_user.is_verified,
+        },
     }
 
 
 @auth_router.post(
     "/login",
-    response_model=UserLoginModel,
     status_code=status.HTTP_200_OK,
 )
 async def login_user(login_data: UserLoginModel, session: AsyncSession = Depends(get_session)):
@@ -159,16 +169,11 @@ async def login_user(login_data: UserLoginModel, session: AsyncSession = Depends
 
 @auth_router.get('/refresh_token')
 async def get_new_access_token(token_details: dict = Depends(RefreshTokenBearer())):
-    expiry_timestamp = token_details['exp']
+    new_access_token = create_access_token(
+        user_data=token_details['user']
+    )
 
-    if datetime.fromtimestamp(expiry_timestamp) > datetime.now():
-        new_access_token = create_access_token(
-            user_data=token_details['user']
-        )
-
-        return JSONResponse(content={'access_token': new_access_token})
-
-    raise InvalidToken()
+    return JSONResponse(content={'access_token': new_access_token})
 
 
 @auth_router.get('/me', response_model=UserBooksModel)
@@ -192,34 +197,33 @@ async def revoke_token(token_details: dict = Depends(AccessTokenBearer())):
 
 @auth_router.post('/password-reset-confirm/{token}')
 async def password_reset_confirm(token: str, password_data: PasswordResetConfirmModel, session: AsyncSession = Depends(get_session)):
-    try:
-        token_data = decode_url_safe_token(token, max_age=3600)
-        email = token_data.get("email")
-        uid = token_data.get("uid")
+    token_data = decode_url_safe_token(token, max_age=3600)
+    if not token_data:
+        raise InvalidToken()
 
-        user = await user_service.get_user_by_email(session, email)
+    email = token_data.get("email")
+    uid = token_data.get("uid")
 
-        if not user or str(user.uid) != uid:
-            raise UserNotFound()
+    if not email or not uid:
+        raise InvalidToken()
 
-        if password_data.new_password != password_data.confirm_new_password:
-            raise HTTPException(
-                detail="Passwords do not match",
-                status_code=status.HTTP_400_BAD_REQUEST
-            )
+    user = await user_service.get_user_by_email(session, email)
 
-        await user_service.update_password(session, user, password_data.new_password)
+    if not user or str(user.uid) != uid:
+        raise UserNotFound()
 
-        return JSONResponse(
-            content={"message": "Password reset successfully"},
-            status_code=status.HTTP_200_OK
+    if password_data.new_password != password_data.confirm_new_password:
+        raise HTTPException(
+            detail="Passwords do not match",
+            status_code=status.HTTP_400_BAD_REQUEST
         )
 
-    except Exception as e:
-        return JSONResponse(
-            content={"message": "Error occurred during password reset"},
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        )
+    await user_service.update_password(session, user, password_data.new_password)
+
+    return JSONResponse(
+        content={"message": "Password reset successfully"},
+        status_code=status.HTTP_200_OK
+    )
 
 
 @auth_router.post('/password-reset-request')

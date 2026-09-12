@@ -1,5 +1,3 @@
-from datetime import datetime
-
 from sqlmodel.ext.asyncio.session import AsyncSession
 from sqlmodel import select, desc
 
@@ -32,8 +30,6 @@ class BookService:
     async def create_book(self, session: AsyncSession, book_data: BookCreateModel, user_id: str):
         new_book = Book(**book_data.model_dump())
 
-        new_book.published_date = datetime.strptime(book_data.published_date, "%Y-%m-%d").date()
-
         new_book.user_uid = user_id
 
         session.add(new_book)
@@ -45,8 +41,9 @@ class BookService:
     async def update_book(self, session: AsyncSession, book_uid: str, book_data: BookUpdateModel):
         book = await self.get_book(session, book_uid)
 
-        for key, value in book_data.model_dump().items():
+        for key, value in book_data.model_dump(exclude_unset=True).items():
             setattr(book, key, value)
+        session.add(book)
         await session.commit()
         await session.refresh(book)
 
@@ -58,4 +55,4 @@ class BookService:
         await session.delete(book)
         await session.commit()
 
-        return {}
+        return None

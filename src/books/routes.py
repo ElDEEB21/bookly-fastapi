@@ -28,7 +28,7 @@ async def get_user_books(
         session: AsyncSession = Depends(get_session),
         token_details: dict = Depends(access_token_bearer),
 ):
-    user_id = token_details.get('user')['user_uuid']
+    user_id = (token_details.get('user') or {}).get('user_uuid')
     books = await book_service.get_user_books(user_id, session)
     return books
 
@@ -36,7 +36,7 @@ async def get_user_books(
 @book_router.post("", status_code=status.HTTP_201_CREATED, dependencies=[role_checker])
 async def create_a_book(book_data: BookCreateModel, session: AsyncSession = Depends(get_session),
                         token_details: dict = Depends(access_token_bearer)) -> dict:
-    user_id = token_details.get('user')['user_uuid']
+    user_id = (token_details.get('user') or {}).get('user_uuid')
     new_book = await book_service.create_book(session, book_data, user_id)
     return {"message": "Book created successfully", "book": new_book}
 
@@ -48,7 +48,7 @@ async def get_book(book_uid: str, session: AsyncSession = Depends(get_session),
     return book
 
 
-@book_router.patch("/{book_uid}", response_model=BookUpdateModel, dependencies=[role_checker])
+@book_router.patch("/{book_uid}", response_model=Book, dependencies=[role_checker])
 async def patch_book(book_uid: str, new_data: BookUpdateModel, session: AsyncSession = Depends(get_session),
                      token_details: dict = Depends(access_token_bearer)) -> Book:
     updated_book = await book_service.update_book(session, book_uid, new_data)
@@ -59,4 +59,4 @@ async def patch_book(book_uid: str, new_data: BookUpdateModel, session: AsyncSes
 async def delete_book(book_uid: str, session: AsyncSession = Depends(get_session),
                       token_details: dict = Depends(access_token_bearer)):
     await book_service.delete_book(session, book_uid)
-    return {}
+    return None

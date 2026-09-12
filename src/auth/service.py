@@ -45,12 +45,14 @@ class UserService:
         if await self.user_username_exists(session, user_data_dict["username"]):
             raise UserUsernameAlreadyExists()
 
+        password = user_data_dict.pop("password")
         new_user = User(**user_data_dict)
-        new_user.password_hash = generate_passwd_hash(user_data_dict["password"])
+        new_user.password_hash = generate_passwd_hash(password)
         new_user.role = "user"
 
         session.add(new_user)
         await session.commit()
+        await session.refresh(new_user)
 
         return new_user
 
